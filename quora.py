@@ -5,6 +5,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 import scipy
 import pickle
 from tqdm import tqdm
+import os.path
 
 def create_csv():
 	file = open("train.csv","r")
@@ -47,6 +48,16 @@ def get_feature_from_question(q1 , q2 , feature_size, cosineDist):
 	X[feature_size - 1] = 1
 	return X
 
+def getFeature11(question): # "what"
+	X = np.zeros(len(question))
+	print " size of temp X feature is"
+	print X.shape
+	for index in range(len(question)):
+		if question[index].startswith("What"):
+			X[index] = 1
+		else :
+			X[index] = 0
+	return X
 def create_features():
 	print " Creating Features Start !"
 	use_partial = "NO"
@@ -55,6 +66,7 @@ def create_features():
 	question2 = []
 	is_duplicate = []
 	feature_size = 9
+	tokenize = lambda doc: doc.lower().split(" ")
 	print " FEature size = %s" % feature_size
 	
 	print "Reading Negative Train File"
@@ -91,56 +103,101 @@ def create_features():
 		# print "q1: %s\nq2: %s \n%s \n\n" % (question1[index] , question2[index] , is_duplicate[index] )
 
 		# starting vectorizer
-	print "Running Tf-Idf Vectorizer"
-	tokenize = lambda doc: doc.lower().split(" ")
-	tfidvec = TfidfVectorizer(norm='l2',min_df=0, use_idf=True, smooth_idf=False, sublinear_tf=True, tokenizer=tokenize)
-	tflist = list(question1)
-	tflist.extend(question2)
-	tfidvec.fit(tflist)
+	if not os.path.exists("X_cosine_scipy.pickle") or use_partial == "YES":
+		print "Picle file does not exist !"
+		print "Running Tf-Idf Vectorizer"
 
-	tfid_q1 = tfidvec.transform(question1)
-	
-	tfid_q2 = tfidvec.transform(question2)
-	
-	print " question 1 vector size = %d X %d " % (tfid_q1.shape[0] , tfid_q1.shape[1])
-	print " question 2 vector size = %d X %d" % (tfid_q2.shape[0], tfid_q2.shape[1])
-	print " DATA SIZE  = %d " % DATA_SIZE
-	feature_size += 1
-	print " new feature size is %d " % feature_size 
+		tfidvec = TfidfVectorizer(norm='l2',min_df=0, use_idf=True, smooth_idf=False, sublinear_tf=True, tokenizer=tokenize)
+		tflist = list(question1)
+		tflist.extend(question2)
+		tfidvec.fit(tflist)
 
-	# print " tf id = %s " % tfid_q1[0]
-	# print tfid_q1[0,:]*tfid_q2[0,:]
-	eX=scipy.spatial.distance.cosine(tfid_q1[0].toarray(),tfid_q2[0].toarray())
-	# print eX
-	
-	# q1_tfarray = tfid_q1.toarray()
-	# q2_tfarray = tfid_q2.toarray()
+		tfid_q1 = tfidvec.transform(question1)
+		
+		tfid_q2 = tfidvec.transform(question2)
+		
+		print " question 1 vector size = %d X %d " % (tfid_q1.shape[0] , tfid_q1.shape[1])
+		print " question 2 vector size = %d X %d" % (tfid_q2.shape[0], tfid_q2.shape[1])
+		print " DATA SIZE  = %d " % DATA_SIZE
+		feature_size += 1
+		print " new feature size is %d " % feature_size 
 
-	# print " question 1 array size = %d X %d " % (q1_tfarray.shape[0] , q1_tfarray.shape[1])
-	# print " question 2 array size = %d X %d" % (q2_tfarray.shape[0], q2_tfarray.shape[1])
+		# print " tf id = %s " % tfid_q1[0]
+		# print tfid_q1[0,:]*tfid_q2[0,:]
+		eX=scipy.spatial.distance.cosine(tfid_q1[0].toarray(),tfid_q2[0].toarray())
+		# print eX
+		
+		# q1_tfarray = tfid_q1.toarray()
+		# q2_tfarray = tfid_q2.toarray()
 
-	X = np.zeros((DATA_SIZE , feature_size))
+		# print " question 1 array size = %d X %d " % (q1_tfarray.shape[0] , q1_tfarray.shape[1])
+		# print " question 2 array size = %d X %d" % (q2_tfarray.shape[0], q2_tfarray.shape[1])
+
+		X = np.zeros((DATA_SIZE , feature_size))
+
+		for index in tqdm(range(DATA_SIZE)):
+			ques1 = question1[index]
+			ques2 = question2[index]
+			eX = scipy.spatial.distance.cosine(tfid_q1[index].toarray(),tfid_q2[index].toarray())
+			#print " ex = %s and y = %d " % (eX, Y[index])
+			X[index] = get_feature_from_question(ques1,ques2, feature_size, eX)
+			# if index % 100 == 0:
+			# 	print " index  = %s " % index
+		
+		# pickleing X
+		with open('X_piclePartial.pickle', 'wb') as handle:
+			pickle.dump(X, handle , protocol = pickle.HIGHEST_PROTOCOL)
+	else:
+		print "Pickle file exist."
+		with open('X_cosine_scipy.pickle' , 'rb') as handle:
+			X = pickle.load(handle)
+		print " loaded pickle file size is"
+		feature_size = X.shape[1]
+		print X.shape
+
 	Y = np.zeros(DATA_SIZE)
-	W = np.zeros(feature_size)
+	#W = np.zeros(feature_size)
+	
 	for index in tqdm(range(DATA_SIZE)):
 		if is_duplicate[index] == '0':
 			Y[index] = 0
 		else :
 			Y[index] = 1
-		ques1 = question1[index]
-		ques2 = question2[index]
-		eX = scipy.spatial.distance.cosine(tfid_q1[index].toarray(),tfid_q2[index].toarray())
-		#print " ex = %s and y = %d " % (eX, Y[index])
-		X[index] = get_feature_from_question(ques1,ques2, feature_size, eX)
-		# if index % 100 == 0:
-		# 	print " index  = %s " % index
-	
-	# pickleing X
-	with open('X_picle.pickle', 'wb') as handle:
-		pickle.dump(X, handle , protocol = pickle.HIGHEST_PROTOCOL)
+
+	print " X.shape = "
+	print (X.shape)
+	print "feature size = %s " % feature_size
+
+	# adding 11th feature what
+	if not os.path.exists("trainFeature11.pickle"):
+		print " adding feature 11!"
+		X11Q1 = getFeature11(question1)
+		X = np.insert( X , feature_size , X11Q1 , axis = 1)
+		X11Q2 = getFeature11(question2)
+		X = np.insert( X , feature_size + 1 , X11Q1 , axis = 1)
+		feature_size += 2
+		write = np.zeros((len(question1) , 0))
+		write = np.insert(write , 0 , X11Q1 , axis = 1)
+		write = np.insert(write , 1 , X11Q2 , axis = 1)
+		
+		with open('trainFeature11.pickle', 'wb') as handle:
+			pickle.dump(write, handle , protocol = pickle.HIGHEST_PROTOCOL)
+
+	else:
+		print " feature 11 file exist "
+		with open('trainFeature11.pickle', 'rb') as handle:
+			f11 = pickle.load(handle)
+		print f11.shape
+		X = np.insert( X , feature_size , values = 0 , axis = 1)
+		X = np.insert( X , feature_size + 1 , values = 0 , axis = 1)
+		for i in range(len(X)):
+			X[i][feature_size] = f11[i][0] 
+			X[i][feature_size+1] = f11[i][1]
+		feature_size += 2
 
 
-
+	print X.shape
+	print "feature size = %s " % feature_size
 	# print tfid_q1.shape
 	# print tfid_q2.shape
 	
@@ -181,6 +238,7 @@ def create_features():
 
 	print "Opening test.csv !"
 	file3 = open("test.csv","r")
+	# file3 = open("partial_neg_train.csv","r")
 	reader3 = csv.reader(file3)
 
 	test_q1 = []
@@ -197,24 +255,67 @@ def create_features():
 			test_q2.append(row[2])
 			DATA_SIZE += 1
 	DATA_SIZE -= 1
+	feature_size = 10
+	if not os.path.exists("testFeatures.pickle"):
+		tfidvec1 = TfidfVectorizer(norm='l2',min_df=0, use_idf=True, smooth_idf=False, sublinear_tf=True, tokenizer=tokenize)
+		tflist1 = list(test_q1)
+		tflist1.extend(test_q2)
+		tfidvec1.fit(tflist1)
 
-	tfidvec1 = TfidfVectorizer(norm='l2',min_df=0, use_idf=True, smooth_idf=False, sublinear_tf=True, tokenizer=tokenize)
-	tflist1 = list(test_q1)
-	tflist1.extend(test_q2)
-	tfidvec1.fit(tflist1)
-
-	tf_q1 = tfidvec1.transform(test_q1)
-	
-	tf_q2 = tfidvec1.transform(test_q2)
+		tf_q1 = tfidvec1.transform(test_q1)
+		
+		tf_q2 = tfidvec1.transform(test_q2)
 
 
-	test_X = np.zeros((DATA_SIZE , feature_size))
+		test_X = np.zeros((DATA_SIZE , feature_size))
 
-	for index in range(DATA_SIZE):
-		ques1 = test_q1[index]
-		ques2 = test_q2[index]
-		eX = scipy.spatial.distance.cosine(tf_q1[index].toarray(),tf_q2[index].toarray())
-		test_X[index] = get_feature_from_question(ques1,ques2, feature_size,eX)
+		for index in tqdm(range(DATA_SIZE)):
+			ques1 = test_q1[index]
+			ques2 = test_q2[index]
+			eX = scipy.spatial.distance.cosine(tf_q1[index].toarray(),tf_q2[index].toarray())
+			test_X[index] = get_feature_from_question(ques1,ques2, feature_size,eX)
+		
+		with open('testFeatures.pickle', 'wb') as handle:
+			pickle.dump(test_X, handle , protocol = pickle.HIGHEST_PROTOCOL)
+	else:
+		print "testFeature Pickle file exist."
+		with open('testFeatures.pickle' , 'rb') as handle:
+			test_X = pickle.load(handle)
+		print " loaded pickle file size is"
+		feature_size = test_X.shape[1]
+		print test_X.shape
+
+	print " adding 11 feature for test data "
+	print "feature size = %d " % feature_size
+	# adding 11th feature what
+	if not os.path.exists("testFeature11.pickle"):
+		print " adding feature 11!"
+		X11Q1 = getFeature11(test_q1)
+		test_X = np.insert( test_X , feature_size , X11Q1 , axis = 1)
+		X11Q2 = getFeature11(test_q2)
+		test_X = np.insert( test_X , feature_size + 1 , X11Q1 , axis = 1)
+		feature_size += 2
+		write = np.zeros((len(test_q1) , 0))
+		write = np.insert(write , 0 , X11Q1 , axis = 1)
+		write = np.insert(write , 1 , X11Q2 , axis = 1)
+		
+		with open('testFeature11.pickle', 'wb') as handle:
+			pickle.dump(write, handle , protocol = pickle.HIGHEST_PROTOCOL)
+
+	else:
+		print " feature 11 file exist "
+		with open('testFeature11.pickle', 'rb') as handle:
+			f11 = pickle.load(handle)
+		print f11.shape
+		test_X = np.insert( test_X , feature_size , values = 0 , axis = 1)
+		test_X = np.insert( test_X , feature_size + 1 , values = 0 , axis = 1)
+		for i in range(len(test_X)):
+			test_X[i][feature_size] = f11[i][0] 
+			test_X[i][feature_size+1] = f11[i][1]
+		feature_size += 2
+
+
+
 
 	print "\n *** * predicting on testX  * * * * \n"
 
